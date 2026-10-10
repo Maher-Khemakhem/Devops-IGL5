@@ -8,7 +8,7 @@ pipeline {
     }
 
     environment {
-        REGISTRY = 'your-dockerhub-username/spring-boot-app'
+        REGISTRY = 'maherkh/spring-boot-app'
         REGISTRY_CREDENTIAL = 'dockerhub'
     }
 
@@ -77,9 +77,7 @@ pipeline {
         stage('BUILD DOCKER IMAGE') {
             steps {
                 script {
-                    docker.build(
-                        "${REGISTRY}:${BUILD_NUMBER}"
-                    )
+                    docker.build("${REGISTRY}:${BUILD_NUMBER}")
                 }
             }
         }
