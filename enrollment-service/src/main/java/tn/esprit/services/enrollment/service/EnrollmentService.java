@@ -1,8 +1,8 @@
 package tn.esprit.services.enrollment.service;
 
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -13,15 +13,11 @@ import tn.esprit.services.enrollment.repository.EnrollmentRepository;
 @Service
 public class EnrollmentService {
     private final EnrollmentRepository repository;
-    private final RestClient studentClient;
-    private final RestClient academicClient;
+    private final RestClient serviceClient;
 
-    public EnrollmentService(EnrollmentRepository repository, RestClient.Builder builder,
-            @Value("${clients.student-service-url}") String studentServiceUrl,
-            @Value("${clients.academic-service-url}") String academicServiceUrl) {
+    public EnrollmentService(EnrollmentRepository repository, @LoadBalanced RestClient.Builder builder) {
         this.repository = repository;
-        this.studentClient = builder.baseUrl(studentServiceUrl).build();
-        this.academicClient = builder.baseUrl(academicServiceUrl).build();
+        this.serviceClient = builder.build();
     }
 
     public List<Enrollment> findAll() { return repository.findAll(); }
@@ -48,13 +44,13 @@ public class EnrollmentService {
         if (enrollment.getStudentId() == null || enrollment.getCourseId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "studentId and courseId are required");
         }
-        verifyExists(studentClient, "/students/" + enrollment.getStudentId(), "Student");
-        verifyExists(academicClient, "/courses/" + enrollment.getCourseId(), "Course");
+        verifyExists("http://student-service/students/" + enrollment.getStudentId(), "Student");
+        verifyExists("http://academic-service/courses/" + enrollment.getCourseId(), "Course");
     }
 
-    private void verifyExists(RestClient client, String path, String resource) {
+    private void verifyExists(String url, String resource) {
         try {
-            client.get().uri(path).retrieve().toBodilessEntity();
+            serviceClient.get().uri(url).retrieve().toBodilessEntity();
         } catch (RestClientResponseException exception) {
             if (exception.getStatusCode().is4xxClientError()) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, resource + " does not exist");
