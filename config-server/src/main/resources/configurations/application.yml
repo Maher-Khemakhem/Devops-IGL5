@@ -12,9 +12,12 @@ management:
       enabled: true
     ratelimiters:
       enabled: true
-  metrics:
-    tags:
-      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_URL:http://localhost:9411}/api/v2/spans
 
 # Latency failures: calls slower than 5s are cut
 spring:
@@ -25,3 +28,4 @@ spring:
           default:
             connect-timeout: 2000
             read-timeout: 5000
+

@@ -27,6 +27,7 @@ flowchart LR
         direction TB
         prom["🔥 Prometheus<br/>:9090"]
         graf["📈 Grafana<br/>:3000"]
+        zipkin["🧵 Zipkin<br/>:9411"]
     end
 
     client -->|HTTP| gateway
@@ -49,6 +50,8 @@ flowchart LR
 
     prom -.->|"scrape /actuator/prometheus"| services
     graf -->|PromQL| prom
+    services -.->|"traces"| zipkin
+    gateway -.->|"traces"| zipkin
 
     classDef infraC fill:#ede9fe,stroke:#7c3aed,color:#1e1b4b
     classDef svcC fill:#dcfce7,stroke:#16a34a,color:#14532d
@@ -58,5 +61,5 @@ flowchart LR
     class gateway,config,eureka infraC
     class student,academic,enrollment svcC
     class dbs,dba,dbe dbC
-    class prom,graf obsC
+    class prom,graf,zipkin obsC
     class client cliC

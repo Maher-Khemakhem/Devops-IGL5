@@ -3,3 +3,13 @@ spring:
     name: api-gateway
   config:
     import: "configserver:${CONFIG_URL:http://localhost:8888}"
+
+management:
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    correlation: "[${spring.application.name},%X{traceId:-},%X{spanId:-}] "
+  include-application-name: false

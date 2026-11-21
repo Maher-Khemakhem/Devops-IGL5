@@ -12,8 +12,9 @@ Projet de gestion d'étudiants découpé en microservices (Spring Boot 3.5, Spri
 6. [API](#api)
 7. [Résilience (Resilience4j)](#résilience-resilience4j)
 8. [Surveillance (Actuator, Prometheus, Grafana)](#surveillance-actuator-prometheus-grafana)
-9. [Tester l'équilibrage de charge](#tester-léquilibrage-de-charge)
-10. [Avancement](#avancement)
+9. [Traçabilité (Zipkin)](#traçabilité-zipkin)
+10. [Tester l'équilibrage de charge](#tester-léquilibrage-de-charge)
+11. [Avancement](#avancement)
 
 ## Architecture
 
@@ -47,6 +48,7 @@ flowchart LR
         direction TB
         prom["🔥 Prometheus<br/>:9090"]
         graf["📈 Grafana<br/>:3000"]
+        zipkin["🧵 Zipkin<br/>:9411"]
     end
 
     client -->|HTTP| gateway
@@ -69,6 +71,8 @@ flowchart LR
 
     prom -.->|"scrape /actuator/prometheus"| services
     graf -->|PromQL| prom
+    services -.->|"traces"| zipkin
+    gateway -.->|"traces"| zipkin
 
     classDef infraC fill:#ede9fe,stroke:#7c3aed,color:#1e1b4b
     classDef svcC fill:#dcfce7,stroke:#16a34a,color:#14532d
@@ -78,7 +82,7 @@ flowchart LR
     class gateway,config,eureka infraC
     class student,academic,enrollment svcC
     class dbs,dba,dbe dbC
-    class prom,graf obsC
+    class prom,graf,zipkin obsC
     class client cliC
 ```
 
@@ -103,7 +107,7 @@ Principes :
 ```text
 pom.xml                         POM parent (modules)
 .env / .env.example             variables (base de données, mot de passe)
-docker-compose.yml              Prometheus + Grafana
+docker-compose.yml              Zipkin + Prometheus + Grafana
 monitoring/                     prometheus.yml, provisioning et dashboard Grafana
 config-server/
   src/main/resources/
@@ -125,7 +129,7 @@ enrollment-service/
 
 - Java 17
 - MySQL sur `localhost:3306`
-- Docker (pour Prometheus et Grafana)
+- Docker (pour Zipkin, Prometheus et Grafana)
 
 ## Configuration (.env)
 
@@ -235,6 +239,15 @@ Scénario de démonstration : arrêter `student-service`, puis envoyer plusieurs
 - **Prometheus** : http://localhost:9090 (cibles : http://localhost:9090/targets). Il interroge les services de la machine hôte via `host.docker.internal`.
 - **Grafana** : http://localhost:3000 (`admin` / `admin` par défaut). La source de données et le dashboard *Microservices - Resilience & Metrics* sont provisionnés automatiquement : disponibilité, débit HTTP, état du circuit breaker, retries, rate limiter, mémoire JVM, latence p95.
 
+## Traçabilité (Zipkin)
+
+- Dépendances : `micrometer-tracing-bridge-brave`, `zipkin-reporter-brave` et `feign-micrometer` (propagation du trace id dans les appels Feign).
+- Échantillonnage à 100 % et endpoint `http://localhost:9411/api/v2/spans` (variable `ZIPKIN_URL`), dans `configurations/application.yml`.
+- Les logs affichent `[nom-du-service,traceId,spanId]`.
+- Interface : http://localhost:9411 (démarrée par `docker compose up -d`).
+
+Démonstration : un `POST /enrollments` via la Gateway produit une trace unique `api-gateway` → `enrollment-service` → `student-service` / `academic-service`.
+
 ## Tester l'équilibrage de charge
 
 Lancer une seconde instance d'un service sur un autre port :
@@ -252,6 +265,6 @@ Les deux instances apparaissent dans Eureka sous `STUDENT-SERVICE`. Les requête
 - [x] OpenFeign + Spring Cloud LoadBalancer
 - [x] Resilience4j (retry, rate limiter, circuit breaker, fallback)
 - [x] Actuator, Micrometer, Prometheus, Grafana
-- [ ] Zipkin (traçabilité)
+- [x] Zipkin (traçabilité)
 - [ ] CQRS avec Axon Framework et Axon Server (Docker)
 - [ ] Collection Postman
