@@ -24,7 +24,7 @@ api-gateway/
   src/main/java/tn/esprit/gateway/
 ```
 
-`student-service` gère les étudiants; `academic-service` gère les départements et les cours; `enrollment-service` gère les inscriptions. Les services ont chacun leur base de données. Les inscriptions stockent `studentId` et `courseId` et vérifient ces identifiants par HTTP auprès des deux autres services.
+`student-service` gère les étudiants; `academic-service` gère les départements et les cours; `enrollment-service` gère les inscriptions. Les services ont chacun leur base de données. Les appels REST entre services utilisent OpenFeign avec Eureka : `student-service` valide `departmentId` auprès du service académique, et `enrollment-service` valide `studentId` et `courseId` auprès des services concernés.
 
 `discovery-server` fournit Eureka. Les trois services métier et l’API Gateway s’y enregistrent; `enrollment-service` et la Gateway trouvent les services par leur nom. `api-gateway` expose les routes métier sur un point d’entrée unique.
 
