@@ -1,89 +1,142 @@
-# Student management microservices
+# Student Management — Architecture Microservices avec Spring Cloud
 
-Le `pom.xml` racine orchestre cinq modules Maven, placés à côté de lui. Chaque application Spring Boot a son propre `pom.xml` et son dossier `src/main` :
+Projet de gestion d'étudiants découpé en microservices (Spring Boot 3.5, Spring Cloud 2025.0, Java 17), réalisé dans le cadre du DS *Architecture des composants* (GL5, FST).
+
+## Sommaire
+
+1. [Architecture](#architecture)
+2. [Structure du dépôt](#structure-du-dépôt)
+3. [Prérequis](#prérequis)
+4. [Configuration (.env)](#configuration-env)
+5. [Démarrage](#démarrage)
+6. [API](#api)
+7. [Résilience (Resilience4j)](#résilience-resilience4j)
+8. [Surveillance (Actuator, Prometheus, Grafana)](#surveillance-actuator-prometheus-grafana)
+9. [Tester l'équilibrage de charge](#tester-léquilibrage-de-charge)
+10. [Avancement](#avancement)
+
+## Architecture
 
 ```text
-pom.xml
-student-service/
-  pom.xml
-  src/main/java/tn/esprit/services/student/
-  src/main/resources/application.yml
-academic-service/
-  pom.xml
-  src/main/java/tn/esprit/services/academic/
-  src/main/resources/application.yml
-enrollment-service/
-  pom.xml
-  src/main/java/tn/esprit/services/enrollment/
-  src/main/resources/application.yml
-discovery-server/
-  pom.xml
-  src/main/java/tn/esprit/discovery/
-api-gateway/
-  pom.xml
-  src/main/java/tn/esprit/gateway/
+                          ┌────────────────┐
+                          │  config-server │  :8888  configurations centralisées
+                          └───────▲────────┘
+                                  │ (au démarrage)
+ Client ──► api-gateway :8080 ──► lb://  ──► student-service    :8081 ── studentsdb
+               │                       ├──► academic-service   :8082 ── academicdb
+               │                       └──► enrollment-service :8083 ── enrollmentsdb
+               │                                   │  OpenFeign + Resilience4j
+               └───────── discovery-server :8761 (Eureka) ◄── enregistrement de tous les services
 ```
 
-`student-service` gère les étudiants; `academic-service` gère les départements et les cours; `enrollment-service` gère les inscriptions. Les services ont chacun leur base de données. Les appels REST entre services utilisent OpenFeign avec Eureka : `student-service` valide `departmentId` auprès du service académique, et `enrollment-service` valide `studentId` et `courseId` auprès des services concernés.
+| Module | Rôle | Port |
+| --- | --- | --- |
+| `config-server` | Spring Cloud Config Server (profil `native`) | 8888 |
+| `discovery-server` | Eureka : découverte et enregistrement des services | 8761 |
+| `api-gateway` | Spring Cloud Gateway : point d'entrée unique, routes `lb://` | 8080 |
+| `student-service` | Gestion des étudiants (valide `departmentId`) | 8081 |
+| `academic-service` | Gestion des départements et des cours | 8082 |
+| `enrollment-service` | Gestion des inscriptions (valide `studentId` et `courseId`) | 8083 |
 
-`discovery-server` fournit Eureka. Les trois services métier et l’API Gateway s’y enregistrent; `enrollment-service` et la Gateway trouvent les services par leur nom. `api-gateway` expose les routes métier sur un point d’entrée unique.
+Principes :
+- **Une base MySQL indépendante par service** (`studentsdb`, `academicdb`, `enrollmentsdb`).
+- **Communication synchrone** entre services via **OpenFeign**, avec résolution des noms par Eureka et équilibrage par **Spring Cloud LoadBalancer**.
+- **Configuration centralisée** : chaque service ne contient que son nom et l'adresse du Config Server.
+
+## Structure du dépôt
+
+```text
+pom.xml                         POM parent (modules)
+.env / .env.example             variables (base de données, mot de passe)
+docker-compose.yml              Prometheus + Grafana
+monitoring/                     prometheus.yml, provisioning et dashboard Grafana
+config-server/
+  src/main/resources/
+    application.yml             config du serveur (charge le .env)
+    configurations/             configs servies aux clients
+      application.yml           partagé (Actuator, timeouts Feign)
+      student-service.yml
+      academic-service.yml
+      enrollment-service.yml
+      api-gateway.yml
+discovery-server/
+api-gateway/
+student-service/
+academic-service/
+enrollment-service/
+```
+
+## Prérequis
+
+- Java 17
+- MySQL sur `localhost:3306`
+- Docker (pour Prometheus et Grafana)
+
+## Configuration (.env)
+
+Copier le modèle puis adapter les valeurs :
+
+```powershell
+Copy-Item .env.example .env
+```
+
+| Variable | Rôle | Défaut |
+| --- | --- | --- |
+| `DB_HOST` | hôte MySQL | `localhost` |
+| `DB_USER` | utilisateur MySQL | `root` |
+| `DB_PASSWORD` | mot de passe MySQL | *(obligatoire)* |
+| `STUDENT_DB` | base de `student-service` | `studentsdb` |
+| `ACADEMIC_DB` | base de `academic-service` | `academicdb` |
+| `ENROLLMENT_DB` | base de `enrollment-service` | `enrollmentsdb` |
+| `GRAFANA_PASSWORD` | mot de passe admin Grafana (optionnel) | `admin` |
+
+Le fichier `.env` est ignoré par Git. Il est lu par le **Config Server**, qui renvoie aux services les valeurs déjà résolues : lance donc le Config Server **depuis la racine du projet**. Les bases sont créées automatiquement si le compte MySQL en a le droit.
 
 ## Démarrage
 
-Prérequis : Java 17 et MySQL accessible sur `localhost:3306`. Les bases `studentsdb`, `academicdb` et `enrollmentsdb` sont créées automatiquement si le compte MySQL configuré en a le droit.
-
-Lance chaque commande dans son propre terminal PowerShell depuis le dossier racine :
+Chaque commande dans son propre terminal, depuis la racine. **L'ordre compte** : Config Server → Eureka → services → Gateway.
 
 ```powershell
+.\mvnw.cmd -pl config-server spring-boot:run
 .\mvnw.cmd -pl discovery-server spring-boot:run
-```
-
-```powershell
 .\mvnw.cmd -pl student-service spring-boot:run
-```
-
-```powershell
 .\mvnw.cmd -pl academic-service spring-boot:run
-```
-
-```powershell
 .\mvnw.cmd -pl enrollment-service spring-boot:run
-```
-
-```powershell
 .\mvnw.cmd -pl api-gateway spring-boot:run
 ```
 
-Démarre d’abord Eureka, puis les services métier, puis la Gateway. Les identifiants MySQL sont définis dans le fichier `application.yml` de chaque service. `DB_HOST` permet de changer l’hôte. Les ports par défaut sont `8761` (Eureka), `8081` (étudiants), `8082` (académique), `8083` (inscriptions) et `8080` (Gateway).
-
-Pour construire les cinq JAR depuis la racine :
+Puis la supervision :
 
 ```powershell
-.\mvnw.cmd package
+docker compose up -d
 ```
 
-Pour construire ou lancer un seul module, indique son nom avec `-pl`, par exemple `-pl api-gateway` ou `-pl discovery-server`.
+Vérifications :
+
+| Quoi | URL |
+| --- | --- |
+| Config servie à un service | http://localhost:8888/student-service/default |
+| Tableau Eureka | http://localhost:8761 |
+| Swagger étudiants | http://localhost:8081/docs |
+| Swagger académique | http://localhost:8082/docs |
+| Swagger inscriptions | http://localhost:8083/docs |
+
+Pour construire tous les JAR : `.\mvnw.cmd package` (ajouter `-DskipTests` pour aller plus vite).
 
 ## API
 
-Utilise la Gateway pour appeler les services métier :
+Tout passe par la Gateway (`http://localhost:8080`) :
 
 | Ressource | URL |
 | --- | --- |
-| Étudiants | `http://localhost:8080/students` |
-| Départements | `http://localhost:8080/departments` |
-| Cours | `http://localhost:8080/courses` |
-| Inscriptions | `http://localhost:8080/enrollments` |
+| Étudiants | `/students` |
+| Départements | `/departments` |
+| Cours | `/courses` |
+| Inscriptions | `/enrollments` |
 
-Le tableau d’Eureka est sur `http://localhost:8761`.
+Chaque ressource expose `GET /`, `GET /{id}`, `POST /`, `PUT /{id}`, `DELETE /{id}`.
 
-La documentation interactive Swagger UI reste accessible directement sur chaque service métier :
-
-- Étudiants : `http://localhost:8081/docs`
-- Académique : `http://localhost:8082/docs`
-- Inscriptions : `http://localhost:8083/docs`
-
-Chaque ressource expose `GET /`, `GET /{id}`, `POST /`, `PUT /{id}` et `DELETE /{id}`. Exemple de création d’inscription :
+Exemple de création d'inscription (`POST /enrollments`) :
 
 ```json
 {
@@ -94,3 +147,56 @@ Chaque ressource expose `GET /`, `GET /{id}`, `POST /`, `PUT /{id}` et `DELETE /
   "courseId": 1
 }
 ```
+
+Codes retournés lors de la validation des références : `422` si l'étudiant, le cours ou le département n'existe pas, `503` si le service distant est indisponible.
+
+## Résilience (Resilience4j)
+
+Les appels Feign sont protégés dans `RemoteLookupService` (enrollment) et `DepartmentLookupService` (student). Configuration dans `config-server/.../configurations/*-service.yml` :
+
+| Mécanisme | Paramètres |
+| --- | --- |
+| **Retry** | 3 tentatives, 500 ms entre chaque |
+| **Rate Limiter** | 5 requêtes / seconde |
+| **Circuit Breaker** | fenêtre de 10 appels, ouverture à 50 % d'échecs (min. 5 appels), 10 s en état ouvert |
+| **Timeout** | connexion 2 s, lecture 5 s (Feign) |
+| **Fallback** | réponse `503` explicite une fois les tentatives épuisées ou le circuit ouvert |
+
+Ordre d'application : `Retry( CircuitBreaker( RateLimiter( appel ) ) )`, le fallback étant porté par le Retry. Les réponses `4xx` sont des réponses métier : elles ne sont ni rejouées ni comptées comme échecs.
+
+| Défaillance | Comportement |
+| --- | --- |
+| Service inactif / hors ligne | exception Feign → retry → fallback `503` |
+| Latence > 5 s | `read-timeout` → retry → fallback `503` |
+| Réponse incorrecte (vide, id différent) | `InvalidRemoteResponseException` → comptée comme échec |
+| Erreur réseau (mauvaise URL) | exception Feign → retry → fallback `503` |
+| Dépendance indisponible | circuit ouvert → fallback `503` immédiat |
+
+Scénario de démonstration : arrêter `student-service`, puis envoyer plusieurs `POST /enrollments`. Les premières requêtes échouent après ~1,5 s (3 tentatives), puis le circuit passe à `OPEN` et la réponse devient immédiate. État visible sur http://localhost:8083/actuator/circuitbreakers.
+
+## Surveillance (Actuator, Prometheus, Grafana)
+
+- Chaque service expose `/actuator/health`, `/actuator/metrics`, `/actuator/prometheus`, `/actuator/circuitbreakers`, `/actuator/retries`, `/actuator/ratelimiters`.
+- **Prometheus** : http://localhost:9090 (cibles : http://localhost:9090/targets). Il interroge les services de la machine hôte via `host.docker.internal`.
+- **Grafana** : http://localhost:3000 (`admin` / `admin` par défaut). La source de données et le dashboard *Microservices - Resilience & Metrics* sont provisionnés automatiquement : disponibilité, débit HTTP, état du circuit breaker, retries, rate limiter, mémoire JVM, latence p95.
+
+## Tester l'équilibrage de charge
+
+Lancer une seconde instance d'un service sur un autre port :
+
+```powershell
+$env:STUDENT_PORT=8091; .\mvnw.cmd -pl student-service spring-boot:run
+```
+
+Les deux instances apparaissent dans Eureka sous `STUDENT-SERVICE`. Les requêtes passant par la Gateway (`/students`) ou par Feign sont réparties entre elles (round-robin) ; les logs de chaque instance permettent de le constater.
+
+## Avancement
+
+- [x] Config Server
+- [x] Eureka, API Gateway, microservices, base par service, Swagger
+- [x] OpenFeign + Spring Cloud LoadBalancer
+- [x] Resilience4j (retry, rate limiter, circuit breaker, fallback)
+- [x] Actuator, Micrometer, Prometheus, Grafana
+- [ ] Zipkin (traçabilité)
+- [ ] CQRS avec Axon Framework et Axon Server (Docker)
+- [ ] Collection Postman
