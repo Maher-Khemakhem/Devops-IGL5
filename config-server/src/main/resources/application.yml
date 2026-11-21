@@ -1,0 +1,15 @@
+spring:
+  config:
+    import: "optional:file:.env[.properties],optional:file:../.env[.properties]"
+  application:
+    name: config-server
+  profiles:
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: classpath:/configurations
+
+server:
+  port: ${CONFIG_PORT:8888}

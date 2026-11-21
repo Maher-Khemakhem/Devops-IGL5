@@ -1,0 +1,32 @@
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: students
+              uri: "lb://student-service"
+              predicates:
+                - "Path=/students,/students/**"
+            - id: departments
+              uri: "lb://academic-service"
+              predicates:
+                - "Path=/departments,/departments/**"
+            - id: courses
+              uri: "lb://academic-service"
+              predicates:
+                - "Path=/courses,/courses/**"
+            - id: enrollments
+              uri: "lb://enrollment-service"
+              predicates:
+                - "Path=/enrollments,/enrollments/**"
+
+server:
+  port: ${GATEWAY_PORT:8080}
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: "${EUREKA_URL:http://localhost:8761/eureka/}"
+  instance:
+    prefer-ip-address: true

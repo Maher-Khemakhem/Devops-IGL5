@@ -1,26 +1,5 @@
 spring:
   application:
     name: academic-service
-  datasource:
-    url: "jdbc:mysql://${DB_HOST:localhost}:3306/academicdb?createDatabaseIfNotExist=true"
-    username: root
-    password: maher
-  jpa:
-    hibernate:
-      ddl-auto: update
-    open-in-view: false
-    database-platform: org.hibernate.dialect.MySQLDialect
-
-server:
-  port: ${ACADEMIC_PORT:8082}
-
-springdoc:
-  swagger-ui:
-    path: /docs
-
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: "${EUREKA_URL:http://localhost:8761/eureka/}"
-  instance:
-    prefer-ip-address: true
+  config:
+    import: "configserver:${CONFIG_URL:http://localhost:8888}"

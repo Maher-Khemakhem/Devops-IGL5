@@ -16,6 +16,7 @@
     <description>Student management microservices</description>
 
     <modules>
+        <module>config-server</module>
         <module>student-service</module>
         <module>academic-service</module>
         <module>enrollment-service</module>
