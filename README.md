@@ -17,17 +17,72 @@ Projet de gestion d'étudiants découpé en microservices (Spring Boot 3.5, Spri
 
 ## Architecture
 
-```text
-                          ┌────────────────┐
-                          │  config-server │  :8888  configurations centralisées
-                          └───────▲────────┘
-                                  │ (au démarrage)
- Client ──► api-gateway :8080 ──► lb://  ──► student-service    :8081 ── studentsdb
-               │                       ├──► academic-service   :8082 ── academicdb
-               │                       └──► enrollment-service :8083 ── enrollmentsdb
-               │                                   │  OpenFeign + Resilience4j
-               └───────── discovery-server :8761 (Eureka) ◄── enregistrement de tous les services
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"15px","primaryColor":"#eef2ff","primaryBorderColor":"#6366f1","lineColor":"#475569"}}}%%
+flowchart LR
+    client(["👤 Client<br/>Postman / Swagger"])
+
+    subgraph infra["☁️ Spring Cloud infrastructure"]
+        direction TB
+        gateway["🚪 api-gateway<br/>:8080"]
+        config["⚙️ config-server<br/>:8888"]
+        eureka["🔎 discovery-server<br/>Eureka :8761"]
+    end
+
+    subgraph services["🧩 Business microservices"]
+        direction TB
+        student["🎓 student-service<br/>:8081"]
+        academic["📚 academic-service<br/>:8082"]
+        enrollment["📝 enrollment-service<br/>:8083"]
+    end
+
+    subgraph data["🗄️ MySQL — one database per service"]
+        direction TB
+        dbs[("studentsdb")]
+        dba[("academicdb")]
+        dbe[("enrollmentsdb")]
+    end
+
+    subgraph obs["📊 Observability (Docker)"]
+        direction TB
+        prom["🔥 Prometheus<br/>:9090"]
+        graf["📈 Grafana<br/>:3000"]
+    end
+
+    client -->|HTTP| gateway
+    gateway -->|"lb://"| student
+    gateway -->|"lb://"| academic
+    gateway -->|"lb://"| enrollment
+
+    enrollment -->|"Feign + Resilience4j"| student
+    enrollment -->|"Feign + Resilience4j"| academic
+    student -->|"Feign + Resilience4j"| academic
+
+    student --- dbs
+    academic --- dba
+    enrollment --- dbe
+
+    services -.->|register| eureka
+    gateway -.->|register| eureka
+    services -.->|fetch config| config
+    gateway -.->|fetch config| config
+
+    prom -.->|"scrape /actuator/prometheus"| services
+    graf -->|PromQL| prom
+
+    classDef infraC fill:#ede9fe,stroke:#7c3aed,color:#1e1b4b
+    classDef svcC fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef dbC fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef obsC fill:#ffedd5,stroke:#ea580c,color:#7c2d12
+    classDef cliC fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+    class gateway,config,eureka infraC
+    class student,academic,enrollment svcC
+    class dbs,dba,dbe dbC
+    class prom,graf obsC
+    class client cliC
 ```
+
+> Source du diagramme : [docs/architecture/architecture.mmd](docs/architecture/architecture.mmd) (affiché automatiquement par GitHub).
 
 | Module | Rôle | Port |
 | --- | --- | --- |
