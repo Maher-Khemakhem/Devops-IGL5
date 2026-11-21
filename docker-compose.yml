@@ -1,4 +1,14 @@
 services:
+  axonserver:
+    image: axoniq/axonserver:latest
+    container_name: axonserver
+    ports:
+      - "8024:8024"
+      - "8124:8124"
+    volumes:
+      - axonserver-data:/axonserver/data
+      - axonserver-events:/axonserver/events
+
   zipkin:
     image: openzipkin/zipkin:latest
     container_name: zipkin
@@ -32,3 +42,5 @@ services:
 
 volumes:
   grafana-data:
+  axonserver-data:
+  axonserver-events:

@@ -13,8 +13,9 @@ Projet de gestion d'étudiants découpé en microservices (Spring Boot 3.5, Spri
 7. [Résilience (Resilience4j)](#résilience-resilience4j)
 8. [Surveillance (Actuator, Prometheus, Grafana)](#surveillance-actuator-prometheus-grafana)
 9. [Traçabilité (Zipkin)](#traçabilité-zipkin)
-10. [Tester l'équilibrage de charge](#tester-léquilibrage-de-charge)
-11. [Avancement](#avancement)
+10. [CQRS avec Axon](#cqrs-avec-axon-enrollment-service)
+11. [Tester l'équilibrage de charge](#tester-léquilibrage-de-charge)
+12. [Avancement](#avancement)
 
 ## Architecture
 
@@ -107,7 +108,7 @@ Principes :
 ```text
 pom.xml                         POM parent (modules)
 .env / .env.example             variables (base de données, mot de passe)
-docker-compose.yml              Zipkin + Prometheus + Grafana
+docker-compose.yml              Axon Server + Zipkin + Prometheus + Grafana
 monitoring/                     prometheus.yml, provisioning et dashboard Grafana
 config-server/
   src/main/resources/
@@ -129,7 +130,7 @@ enrollment-service/
 
 - Java 17
 - MySQL sur `localhost:3306`
-- Docker (pour Zipkin, Prometheus et Grafana)
+- Docker (pour Axon Server, Zipkin, Prometheus et Grafana)
 
 ## Configuration (.env)
 
@@ -248,6 +249,32 @@ Scénario de démonstration : arrêter `student-service`, puis envoyer plusieurs
 
 Démonstration : un `POST /enrollments` via la Gateway produit une trace unique `api-gateway` → `enrollment-service` → `student-service` / `academic-service`.
 
+## CQRS avec Axon (enrollment-service)
+
+Le module `enrollment-service` applique CQRS + Event Sourcing avec **Axon Framework 4** :
+
+```text
+POST/PUT/DELETE → EnrollmentCommandController → CommandGateway → EnrollmentAggregate → événements (Axon Server)
+                                                                                         │
+GET → EnrollmentQueryController → QueryGateway → EnrollmentProjection (@QueryHandler) ◄── @EventHandler → MySQL (enrollment_view)
+```
+
+| Élément | Classe |
+| --- | --- |
+| Commandes | `CreateEnrollmentCommand`, `UpdateEnrollmentCommand`, `DeleteEnrollmentCommand` |
+| Événements | `EnrollmentCreatedEvent`, `EnrollmentUpdatedEvent`, `EnrollmentDeletedEvent` |
+| Aggregate (logique métier) | `EnrollmentAggregate` (`@CommandHandler`, `@EventSourcingHandler`) |
+| Modèle de lecture | `EnrollmentView` (table MySQL `enrollment_view`) |
+| Projecteur | `EnrollmentProjection` (`@EventHandler` + `@QueryHandler`) |
+| Requêtes | `FindAllEnrollmentsQuery`, `FindEnrollmentByIdQuery` |
+
+- **Axon Server** (conteneur Docker) stocke les événements : console http://localhost:8024, gRPC sur le port 8124.
+- **MySQL** (`enrollmentsdb`) contient le modèle de lecture.
+- Le projecteur est en mode *subscribing* : le GET qui suit un POST voit déjà le résultat.
+- L'API REST reste `/enrollments` via la Gateway ; l'identifiant est désormais un UUID (chaîne).
+- Règles métier : étudiant et cours obligatoires et vérifiés à distance (Resilience4j), note entre 0 et 20, `409` si l'étudiant est déjà inscrit (ACTIVE) au cours.
+- Tests de l'aggregate : `.mvnw.cmd -pl enrollment-service test`.
+
 ## Tester l'équilibrage de charge
 
 Lancer une seconde instance d'un service sur un autre port :
@@ -266,5 +293,5 @@ Les deux instances apparaissent dans Eureka sous `STUDENT-SERVICE`. Les requête
 - [x] Resilience4j (retry, rate limiter, circuit breaker, fallback)
 - [x] Actuator, Micrometer, Prometheus, Grafana
 - [x] Zipkin (traçabilité)
-- [ ] CQRS avec Axon Framework et Axon Server (Docker)
+- [x] CQRS avec Axon Framework et Axon Server (Docker)
 - [ ] Collection Postman

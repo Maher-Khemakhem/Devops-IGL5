@@ -54,3 +54,12 @@ resilience4j:
         ignore-exceptions:
           - org.springframework.web.server.ResponseStatusException
       courseService: *cb
+
+# CQRS / Axon: events in Axon Server, read model in MySQL
+axon:
+  axonserver:
+    servers: ${AXON_SERVER:localhost:8124}
+  eventhandling:
+    processors:
+      enrollment:
+        mode: subscribing
