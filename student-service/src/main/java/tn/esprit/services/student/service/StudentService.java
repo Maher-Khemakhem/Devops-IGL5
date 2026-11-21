@@ -1,22 +1,20 @@
 package tn.esprit.services.student.service;
 
 import java.util.List;
-import feign.FeignException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
-import tn.esprit.services.student.client.DepartmentClient;
 import tn.esprit.services.student.entity.Student;
 import tn.esprit.services.student.repository.StudentRepository;
 
 @Service
 public class StudentService {
     private final StudentRepository repository;
-    private final DepartmentClient departmentClient;
+    private final DepartmentLookupService lookup;
 
-    public StudentService(StudentRepository repository, DepartmentClient departmentClient) {
+    public StudentService(StudentRepository repository, DepartmentLookupService lookup) {
         this.repository = repository;
-        this.departmentClient = departmentClient;
+        this.lookup = lookup;
     }
 
     public List<Student> findAll() { return repository.findAll(); }
@@ -41,13 +39,6 @@ public class StudentService {
 
     private void validateDepartment(Long departmentId) {
         if (departmentId == null) return;
-        try {
-            departmentClient.findById(departmentId);
-        } catch (FeignException exception) {
-            if (exception.status() >= 400 && exception.status() < 500) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Department does not exist");
-            }
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Academic service is unavailable");
-        }
+        lookup.verifyDepartment(departmentId);
     }
 }

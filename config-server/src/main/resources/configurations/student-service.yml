@@ -22,3 +22,32 @@ eureka:
       defaultZone: "${EUREKA_URL:http://localhost:8761/eureka/}"
   instance:
     prefer-ip-address: true
+
+resilience4j:
+  retry:
+    instances:
+      academicService:
+        max-attempts: 3
+        wait-duration: 500ms
+        ignore-exceptions:
+          - org.springframework.web.server.ResponseStatusException
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+  ratelimiter:
+    instances:
+      academicService:
+        limit-for-period: 5
+        limit-refresh-period: 1s
+        timeout-duration: 0
+  circuitbreaker:
+    instances:
+      academicService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+        ignore-exceptions:
+          - org.springframework.web.server.ResponseStatusException
